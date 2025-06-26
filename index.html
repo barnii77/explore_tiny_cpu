@@ -16,6 +16,7 @@
     #controls { flex: 0 0 auto; text-align: center; }
     #controls button { margin: 0 5px; padding: 6px 12px; font-size: 14px; }
     #status { margin-top: 8px; font-weight: bold; }
+    #info-view { flex: 0 0 auto; border-top: 1px solid #ccc; padding: 10px; overflow: auto; background: #f9f9f9; }
     #memory-view { flex: 1; border-top: 1px solid #ccc; padding: 10px; overflow: auto; background: #f9f9f9; }
     table { border-collapse: collapse; width: 100%; font-family: monospace; font-size: 13px; }
     th, td { border: 1px solid #ccc; padding: 2px 4px; text-align: center; }
@@ -35,6 +36,7 @@
       </div>
     </div>
   </div>
+  <div id="info-view"></div>
   <div id="memory-view"></div>
 </div>
 <script>
@@ -57,6 +59,25 @@ const INSTRUCTION_SET = {
   0x0A: { name:'STAB', operand:false, exec(){ this.memory[this.reg.B] = this.reg.A; } },
   0xFF: { name:'HLT',  operand:false, exec(){ this.running = false; } }
 };
+const EXPLANATIONS = {
+  'LDA':  op2 => `Load the number ${op2} directly into register A.`,
+  'LDB':  op2 => `Load the number ${op2} directly into register B.`,
+  'LDAM': op2 => `Read the byte at address ${op2} into register A.`,
+  'LDBM': op2 => `Read the byte at address ${op2} into register B.`,
+  'ADD':  ()  => `Fetch A and B, compute A+B mod 256, and store result back in A.`,
+  'STA':  op2 => `Write the value in A to memory address ${op2}.`,
+  'STAB': ()  => `Write the value in A to the memory address stored in register B.`,
+  'JMP':  op2 => `Unconditionally set PC to ${op2}.`,
+  'JZ':   op2 => `If zero-flag is set, jump to ${op2}; otherwise continue.`,
+  'DEC':  ()  => `Subtract 1 from A (mod 256), set zero-flag if result==0.`,
+  'HLT':  ()  => `Stop execution forever.`,
+  'NOP':  ()  => `No operation.`,
+};
+
+function generateExplanation(name, op2) {
+  const fn = EXPLANATIONS[name];
+  return fn ? fn(op2) : 'Unknown instruction.';
+}
 
 class TinyEmulator {
   constructor(memSize = 256) {
@@ -97,8 +118,10 @@ class TinyEmulator {
   }
   step() {
     if (!this.running) return;
+    this._beforeRegs = { A: this.reg.A, B: this.reg.B, PC: this.PC, ZF: this.ZF };
+    this._beforeMem = Array.from(this.memory);
     const opc = this.memory[this.PC];
-    const inst = INSTRUCTION_SET[opc] || { operand: false, exec(){} };
+    const inst = INSTRUCTION_SET[opc] || { name: 'NOP', operand: false, exec(){} };
     this.PC++;
     let op2 = null;
     if (inst.operand) {
@@ -106,6 +129,7 @@ class TinyEmulator {
       this.PC++;
     }
     inst.exec.call(this, op2);
+    this.last = { name: inst.name, operand: op2 };
   }
 }
 
@@ -204,6 +228,7 @@ function init() {
 function updateUI() {
   renderCode();
   renderRegs();
+  renderInfo();
   renderMemory();
   const btn = document.getElementById('step-btn');
   btn.disabled = !emu.running;
@@ -255,9 +280,46 @@ function renderMemory() {
   view.innerHTML = html;
 }
 
+function renderInfo() {
+  const view = document.getElementById('info-view');
+  if (!emu.last) {
+    view.innerHTML = '';
+    return;
+  }
+  const { name, operand } = emu.last;
+  const expl = generateExplanation(name, operand);
+  let html = '<div><strong>Instruction:</strong> ' + name + (operand != null ? ' ' + operand : '') + '</div>';
+  html += '<div><strong>Explanation:</strong> ' + expl + '</div>';
+
+  html += '<div style="margin-top:8px;"><strong>Registers changed:</strong><ul>';
+  ['A','B','PC','ZF'].forEach(r => {
+    const before = emu._beforeRegs ? emu._beforeRegs[r] : null;
+    const after = (r === 'PC' ? emu.PC : r === 'ZF' ? emu.ZF : emu.reg[r]);
+    if (before != null && before !== after) html += `<li>${r}: ${before} → ${after}</li>`;
+  });
+  html += '</ul></div>';
+
+  html += '<div style="margin-top:8px;"><strong>Memory changed:</strong><ul>';
+  if (emu._beforeMem) {
+    emu.memory.forEach((v,i) => {
+      const old = emu._beforeMem[i];
+      if (old !== v) html += `<li>[${i}] ${old} → ${v}</li>`;
+    });
+  }
+  html += '</ul></div>';
+
+  view.innerHTML = html;
+}
+
 window.addEventListener('load', init);
 document.getElementById('step-btn').addEventListener('click', () => { emu.step(); updateUI(); });
-document.getElementById('reset-btn').addEventListener('click', () => { emu.loadProgram(initial.prog, initial.loadAddr); updateUI(); });
+document.getElementById('reset-btn').addEventListener('click', () => {
+  emu.loadProgram(initial.prog, initial.loadAddr);
+  emu.last = null;
+  emu._beforeRegs = null;
+  emu._beforeMem = null;
+  updateUI();
+});
 </script>
 </body>
 </html>
