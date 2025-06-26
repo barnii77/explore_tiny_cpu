@@ -38,7 +38,6 @@
   <div id="memory-view"></div>
 </div>
 <script>
-// CPU emulator and assembler ported from explore_tiny_cpu.py
 const OPCODES = {
   'LDA': 0x01, 'LDB': 0x02, 'ADD': 0x03,
   'STA': 0x04, 'LDAM':0x05, 'JMP':0x06,
@@ -150,7 +149,6 @@ function assemble(txt, loadAddr = 200) {
   return { prog, loadAddr };
 }
 
-// sample Fibonacci program
 const fibAsm = `
 ; Compute N Fibonacci numbers into mem[50..]
 ; mem[2] = counter (N)
